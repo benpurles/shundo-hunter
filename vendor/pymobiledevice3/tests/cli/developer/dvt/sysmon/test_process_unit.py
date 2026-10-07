@@ -1,0 +1,603 @@
+import json
+from io import StringIO
+from typing import cast
+
+import pytest
+import typer
+
+from pymobiledevice3.cli.developer.dvt.sysmon import process as process_module
+from pymobiledevice3.cli.developer.dvt.sysmon.process import (
+    ProcessSelectionMode,
+    _add_derived_fields,
+    _describe_process,
+    _describe_processes,
+    _duration_elapsed,
+    _format_byte_count,
+    _format_duration_ns,
+    _get_process_identifier,
+    _humanize_process_values,
+    _matches_filters,
+    _matches_selected_process,
+    _parse_process_filters,
+    _process_sort_key,
+    _resolve_matching_process,
+    _resolve_tracked_process,
+    _select_process_from_candidates,
+    _select_process_from_snapshot,
+    _select_process_from_sysmon,
+    _select_process_output_keys,
+    _serialize_process,
+    _should_skip_first_snapshot,
+    _validate_process_keys,
+    _write_json,
+    _write_process,
+    iter_processes,
+    sysmon_process_monitor_process_task,
+    sysmon_process_monitor_threshold_task,
+)
+from pymobiledevice3.lockdown_service_provider import LockdownServiceProvider
+from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
+from pymobiledevice3.services.dvt.instruments.sysmontap import Sysmontap
+
+
+class _FakeSysmontap:
+    def __init__(self, snapshots):
+        self._snapshots = snapshots
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+    async def iter_processes(self):
+        for snapshot in self._snapshots:
+            yield snapshot
+
+
+class _FakeDvtProvider:
+    def __init__(self, service_provider):
+        self.service_provider = service_provider
+
+    async def __aenter__(self):
+        return object()
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+
+def test_parse_process_filters_groups_values_by_key():
+    assert _parse_process_filters(["name=abc", "name=def", "pid=7"]) == {
+        "name": ["abc", "def"],
+        "pid": ["7"],
+    }
+
+
+@pytest.mark.parametrize("raw_filter", ["no_value", "=no_key"])
+def test_parse_process_filters_rejects_invalid_input(raw_filter):
+    with pytest.raises(typer.BadParameter):
+        _parse_process_filters([raw_filter])
+
+
+def test_validate_process_keys_rejects_unknown_keys():
+    with pytest.raises(typer.BadParameter, match="does not have the following keys"):
+        _validate_process_keys({"pid": 1, "name": "abc"}, ["pid", "missing"])
+
+
+def test_matches_filters_requires_all_keys_and_any_value_per_key():
+    process = {"pid": 123, "name": "abc", "realAppName": "Calculator"}
+    assert _matches_filters(process, {"pid": ["123"], "name": ["abc", "def"]})
+    assert not _matches_filters(process, {"pid": ["999"]})
+    assert not _matches_filters(process, {"bundleIdentifier": ["com.example.app"]})
+
+
+def test_select_process_output_keys_returns_process_when_no_keys_requested():
+    process = {"pid": 1, "name": "abc"}
+    assert _select_process_output_keys(process, None) == process
+
+
+def test_select_process_output_keys_filters_selected_keys():
+    assert _select_process_output_keys({"pid": 1, "name": "abc", "cpuUsage": 7.5}, ["pid", "name"]) == {
+        "pid": 1,
+        "name": "abc",
+    }
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (10, "10B"),
+        (1024, "1.0KB"),
+        (10 * 1024, "10KB"),
+        (1024 * 1024, "1.0MB"),
+    ],
+)
+def test_format_byte_count(value, expected):
+    assert _format_byte_count(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0, "0ms"),
+        (500_000, "0ms"),
+        (74_633_791, "74ms"),
+        (1_000_000_000, "1s"),
+        (61_000_000_000, "1m 1s"),
+        (3_600_000_000_000, "1h"),
+        (227_239_368_467_125, "2d 15h 7m 19s"),
+    ],
+)
+def test_format_duration_ns(value, expected):
+    assert _format_duration_ns(value) == expected
+
+
+def test_humanize_process_values_formats_shared_memory_byte_fields():
+    assert _humanize_process_values({"memRShrd": 2048, "memAnonPeak": 1024, "wiredSize": 512}) == {
+        "memRShrd": "2.0KB",
+        "memAnonPeak": "1.0KB",
+        "wiredSize": "512B",
+    }
+
+
+def test_humanize_process_values_formats_nanosecond_fields():
+    assert _humanize_process_values({"cpuTotalUser": 61_000_000_000, "procAge": 1_000_000_000, "pid": 7}) == {
+        "cpuTotalUser": "1m 1s",
+        "procAge": "1s",
+        "pid": 7,
+    }
+
+
+def test_add_derived_fields_computes_cpu_usage_lifetime():
+    process = {"cpuTotalUser": 150, "cpuTotalSystem": 50, "procAge": 100}
+    assert _add_derived_fields(process)["cpuUsageLifetime"] == 200.0
+    assert "cpuUsageLifetime" not in process
+
+
+def test_add_derived_fields_skips_when_inputs_missing_or_zero():
+    assert "cpuUsageLifetime" not in _add_derived_fields({"pid": 7})
+    assert "cpuUsageLifetime" not in _add_derived_fields({"cpuTotalUser": 1, "cpuTotalSystem": 1, "procAge": 0})
+
+
+def test_humanize_process_values_formats_only_known_byte_fields():
+    assert _humanize_process_values({"physFootprint": 2048, "name": "abc", "cpuUsage": 2.0}) == {
+        "physFootprint": "2.0KB",
+        "name": "abc",
+        "cpuUsage": 2.0,
+    }
+
+
+def test_serialize_process_filters_selected_keys():
+    serialized = _serialize_process({"pid": 1, "name": "abc", "cpuUsage": 7.5}, ["pid", "name"])
+    assert serialized["pid"] == 1
+    assert serialized["name"] == "abc"
+    assert "cpuUsage" not in serialized
+    assert "timestamp" in serialized
+
+
+def test_serialize_process_humanizes_selected_values():
+    serialized = _serialize_process({"physFootprint": 2048, "cpuUsage": 1.5}, ["physFootprint"], human=True)
+    assert serialized["physFootprint"] == "2.0KB"
+    assert "cpuUsage" not in serialized
+    assert "timestamp" in serialized
+
+
+def test_write_process_writes_jsonl_to_output_stream():
+    out = StringIO()
+    _write_process(out, {"pid": 1})
+    assert out.getvalue() == '{"pid": 1}\n'
+
+
+def test_write_process_prints_json_when_out_is_none(monkeypatch):
+    captured = {}
+
+    def fake_print_json(value):
+        captured["value"] = value
+
+    monkeypatch.setattr(process_module, "print_json", fake_print_json)
+
+    _write_process(None, {"pid": 1})
+
+    assert captured["value"] == {"pid": 1}
+
+
+def test_write_json_writes_formatted_json_to_output_stream():
+    out = StringIO()
+    _write_json(out, [{"pid": 1}])
+    assert json.loads(out.getvalue()) == [{"pid": 1}]
+
+
+def test_write_json_prints_json_when_out_is_none(monkeypatch):
+    captured = {}
+
+    def fake_print_json(value):
+        captured["value"] = value
+
+    monkeypatch.setattr(process_module, "print_json", fake_print_json)
+
+    _write_json(None, [{"pid": 1}])
+
+    assert captured["value"] == [{"pid": 1}]
+
+
+def test_describe_process_includes_pid_ppid_name():
+    assert _describe_process({"pid": 7, "ppid": 1, "name": "abc", "comm": "abc"}) == "pid=7, ppid=1, name=abc"
+
+
+def test_describe_process_falls_back_to_comm():
+    assert _describe_process({"pid": 7, "ppid": 1, "comm": "abc"}) == "pid=7, ppid=1, name=abc"
+
+
+def test_describe_process_falls_back_to_unknown():
+    assert _describe_process({"pid": 7, "ppid": 1}) == "pid=7, ppid=1, name=<unknown>"
+
+
+def test_describe_processes_joins_descriptions():
+    assert (
+        _describe_processes([
+            {"pid": 7, "ppid": 1, "name": "abc"},
+            {"pid": 8, "ppid": 2, "name": "def"},
+        ])
+        == "pid=7, ppid=1, name=abc; pid=8, ppid=2, name=def"
+    )
+
+
+def test_duration_elapsed_false_when_duration_is_none():
+    assert _duration_elapsed(10.0, None) is False
+
+
+@pytest.mark.parametrize(
+    ("start_time", "duration_ms", "current_time", "expected"),
+    [
+        (1.0, 1000, 1.5, False),
+        (1.0, 1000, 2.0, True),
+        (1.0, 0, 1.0, True),
+    ],
+)
+def test_duration_elapsed(monkeypatch, start_time, duration_ms, current_time, expected):
+    fake_loop = type("FakeLoop", (), {"time": lambda self: current_time})()
+    monkeypatch.setattr(process_module.asyncio, "get_running_loop", lambda: fake_loop)
+    assert _duration_elapsed(start_time, duration_ms) is expected
+
+
+@pytest.mark.parametrize(
+    ("keys", "expected"),
+    [
+        (None, True),
+        (["pid"], False),
+        (["pid", "cpuUsage"], True),
+    ],
+)
+def test_should_skip_first_snapshot(keys, expected):
+    assert _should_skip_first_snapshot(keys) is expected
+
+
+@pytest.mark.asyncio
+async def test_iter_processes_skips_first_snapshot_when_requested():
+    snapshots = [
+        [{"pid": 10, "ppid": 1, "name": "first-snapshot"}],
+        [{"pid": 20, "ppid": 2, "name": "second-snapshot"}],
+        [{"pid": 30, "ppid": 3, "name": "third-snapshot"}],
+    ]
+    sysmon = cast(Sysmontap, _FakeSysmontap(snapshots))
+
+    iterated_snapshots = [snapshot async for snapshot in iter_processes(sysmon, skip_first_snapshot=True)]
+
+    assert iterated_snapshots == snapshots[1:]
+
+
+@pytest.mark.asyncio
+async def test_iter_processes_adds_cpu_usage_lifetime():
+    snapshots = [[{"pid": 7, "cpuTotalUser": 150, "cpuTotalSystem": 50, "procAge": 100}]]
+    sysmon = cast(Sysmontap, _FakeSysmontap(snapshots))
+
+    iterated_snapshots = [snapshot async for snapshot in iter_processes(sysmon)]
+
+    assert iterated_snapshots[0][0]["cpuUsageLifetime"] == 200.0
+
+
+@pytest.mark.asyncio
+async def test_iter_processes_empty_when_only_warmup_snapshot_exists():
+    sysmon = cast(Sysmontap, _FakeSysmontap([[{"pid": 10, "ppid": 1, "name": "first-snapshot"}]]))
+
+    snapshots = [snapshot async for snapshot in iter_processes(sysmon, skip_first_snapshot=True)]
+
+    assert snapshots == []
+
+
+@pytest.mark.asyncio
+async def test_iter_processes_keeps_first_snapshot_when_cpu_usage_not_required():
+    snapshots = [
+        [{"pid": 10, "ppid": 1, "name": "first-snapshot"}],
+        [{"pid": 20, "ppid": 2, "name": "second-snapshot"}],
+    ]
+
+    sysmon = cast(Sysmontap, _FakeSysmontap(snapshots))
+
+    iterated_snapshots = [snapshot async for snapshot in iter_processes(sysmon, skip_first_snapshot=False)]
+
+    assert iterated_snapshots == snapshots
+
+
+@pytest.mark.asyncio
+async def test_sysmon_process_monitor_threshold_task_skips_first_snapshot(monkeypatch):
+    async def fake_create(_dvt):
+        return _FakeSysmontap([
+            [{"pid": 10, "cpuUsage": 99.0}],
+            [{"pid": 20, "cpuUsage": 1.5}],
+        ])
+
+    monkeypatch.setattr(process_module, "DvtProvider", _FakeDvtProvider)
+    monkeypatch.setattr(process_module.Sysmontap, "create", fake_create)
+
+    out = StringIO()
+
+    await sysmon_process_monitor_threshold_task(
+        cast(LockdownServiceProvider, object()), threshold=0.0, keys=["pid"], out=out, duration=1
+    )
+
+    lines = [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert lines[0]["pid"] == 20
+
+
+def test_process_sort_key_normalizes_missing_values():
+    assert _process_sort_key({"name": "abc"}) == (-1, -1, "abc")
+
+
+def test_select_process_from_candidates_returns_single_match():
+    process = {"pid": 7, "name": "abc"}
+    assert _select_process_from_candidates([process], ProcessSelectionMode.PROMPT) == process
+
+
+def test_select_process_from_candidates_first_is_deterministic():
+    first = {"pid": 3, "name": "abc", "startAbsTime": 10}
+    second = {"pid": 2, "name": "abc", "startAbsTime": 20}
+    assert _select_process_from_candidates([second, first], ProcessSelectionMode.FIRST) == first
+
+
+def test_select_process_from_candidates_last_is_deterministic():
+    first = {"pid": 3, "name": "abc", "startAbsTime": 10}
+    last = {"pid": 2, "name": "abc", "startAbsTime": 20}
+    assert _select_process_from_candidates([last, first], ProcessSelectionMode.LAST) == last
+
+
+def test_select_process_from_candidates_multiple_non_tty_raises(monkeypatch):
+    monkeypatch.setattr(process_module.sys, "stdin", type("FakeStdin", (), {"isatty": lambda self: False})())
+
+    with pytest.raises(typer.BadParameter, match='Re-run with "--choose first", "--choose last"'):
+        _select_process_from_candidates(
+            [{"pid": 1, "ppid": 0, "name": "a"}, {"pid": 2, "ppid": 0, "name": "b"}],
+            ProcessSelectionMode.PROMPT,
+        )
+
+
+def test_select_process_from_candidates_prompt_uses_sorted_choices(monkeypatch):
+    monkeypatch.setattr(process_module.sys, "stdin", type("FakeStdin", (), {"isatty": lambda self: True})())
+
+    captured = {}
+
+    def fake_prompt_selection(choices, message, idx=False):
+        captured["choices"] = choices
+        captured["message"] = message
+        captured["idx"] = idx
+        return 1
+
+    monkeypatch.setattr(process_module, "prompt_selection", fake_prompt_selection)
+
+    processes = [
+        {"pid": 20, "ppid": 2, "name": "later", "startAbsTime": 20},
+        {"pid": 10, "ppid": 1, "name": "earlier", "startAbsTime": 10},
+    ]
+
+    selected = _select_process_from_candidates(processes, ProcessSelectionMode.PROMPT)
+
+    assert selected == processes[0]
+    assert captured["choices"] == [
+        "pid=10, ppid=1, name=earlier",
+        "pid=20, ppid=2, name=later",
+    ]
+    assert captured["message"] == "Choose process to monitor"
+    assert captured["idx"] is True
+
+
+def test_get_process_identifier_prefers_unique_id_then_start_time_then_pid():
+    assert _get_process_identifier({"uniqueID": 11, "startAbsTime": 22, "pid": 33}) == ("uniqueID", 11)
+    assert _get_process_identifier({"startAbsTime": 22, "pid": 33}) == ("startAbsTime", 22)
+    assert _get_process_identifier({"pid": 33}) == ("pid", 33)
+
+
+def test_matches_selected_process_uses_identifier_tuple():
+    assert _matches_selected_process({"uniqueID": 11}, ("uniqueID", 11))
+    assert not _matches_selected_process({"uniqueID": 12}, ("uniqueID", 11))
+
+
+def test_select_process_from_snapshot_filters_current_snapshot_only():
+    process_snapshot = [
+        {"pid": 10, "ppid": 1, "name": "alpha"},
+        {"pid": 20, "ppid": 1, "name": "beta"},
+    ]
+
+    selected = _select_process_from_snapshot(process_snapshot, {"name": ["beta"]}, ProcessSelectionMode.FIRST)
+
+    assert selected == {"pid": 20, "ppid": 1, "name": "beta"}
+
+
+def test_select_process_from_snapshot_rejects_unknown_filter_keys():
+    with pytest.raises(typer.BadParameter, match="does not have the following keys"):
+        _select_process_from_snapshot(
+            [{"pid": 10, "ppid": 1, "name": "alpha"}],
+            {"missing": ["value"]},
+            ProcessSelectionMode.FIRST,
+        )
+
+
+def test_select_process_from_snapshot_raises_when_no_match():
+    with pytest.raises(typer.BadParameter, match="current snapshot"):
+        _select_process_from_snapshot(
+            [{"pid": 10, "ppid": 1, "name": "alpha"}],
+            {"name": ["beta"]},
+            ProcessSelectionMode.FIRST,
+        )
+
+
+@pytest.mark.asyncio
+async def test_select_process_from_sysmon_skips_first_snapshot(monkeypatch):
+    async def fake_create(_dvt):
+        return _FakeSysmontap([
+            [{"pid": 10, "ppid": 1, "name": "first-snapshot"}],
+            [{"pid": 20, "ppid": 2, "name": "second-snapshot"}],
+        ])
+
+    monkeypatch.setattr(process_module.Sysmontap, "create", fake_create)
+
+    selected = await _select_process_from_sysmon(
+        cast(DvtProvider, object()), {"name": ["second-snapshot"]}, None, ProcessSelectionMode.FIRST
+    )
+
+    assert selected == {"pid": 20, "ppid": 2, "name": "second-snapshot"}
+
+
+@pytest.mark.asyncio
+async def test_select_process_from_sysmon_doesnt_skip_first_snapshot_when_cpu_usage_not_requested(monkeypatch):
+    async def fake_create(_dvt):
+        return _FakeSysmontap([
+            [{"pid": 10, "ppid": 1, "name": "first-snapshot"}],
+            [{"pid": 20, "ppid": 2, "name": "second-snapshot"}],
+        ])
+
+    monkeypatch.setattr(process_module.Sysmontap, "create", fake_create)
+
+    selected = await _select_process_from_sysmon(
+        cast(DvtProvider, object()), {"name": ["first-snapshot"]}, ["pid", "name"], ProcessSelectionMode.FIRST
+    )
+
+    assert selected == {"pid": 10, "ppid": 1, "name": "first-snapshot"}
+
+
+@pytest.mark.asyncio
+async def test_select_process_from_sysmon_raises_when_no_usable_snapshot(monkeypatch):
+    async def fake_create(_dvt):
+        return _FakeSysmontap([])
+
+    monkeypatch.setattr(process_module.Sysmontap, "create", fake_create)
+
+    with pytest.raises(typer.BadParameter, match="Failed to collect a process snapshot"):
+        await _select_process_from_sysmon(cast(DvtProvider, object()), {}, None, ProcessSelectionMode.FIRST)
+
+
+def test_resolve_matching_process_reapplies_filters():
+    process_snapshot = [
+        {"pid": 10, "ppid": 1, "name": "alpha"},
+        {"pid": 20, "ppid": 1, "name": "beta"},
+    ]
+
+    assert _resolve_matching_process(process_snapshot, {"name": ["beta"]}, ProcessSelectionMode.FIRST) == {
+        "pid": 20,
+        "ppid": 1,
+        "name": "beta",
+    }
+
+
+def test_resolve_matching_process_returns_none_when_nothing_matches():
+    assert (
+        _resolve_matching_process(
+            [{"pid": 10, "ppid": 1, "name": "alpha"}], {"name": ["beta"]}, ProcessSelectionMode.FIRST
+        )
+        is None
+    )
+
+
+def test_resolve_matching_process_rejects_unknown_filter_keys():
+    with pytest.raises(typer.BadParameter, match="does not have the following keys"):
+        _resolve_matching_process(
+            [{"pid": 10, "ppid": 1, "name": "alpha"}], {"missing": ["value"]}, ProcessSelectionMode.FIRST
+        )
+
+
+def test_resolve_tracked_process_returns_none_when_identity_is_absent():
+    assert _resolve_tracked_process([{"pid": 10, "uniqueID": 11}], ("uniqueID", 99), "pid=1, ppid=0, name=abc") is None
+
+
+def test_resolve_tracked_process_rejects_ambiguous_identity():
+    with pytest.raises(typer.BadParameter, match="Selected process identity is ambiguous"):
+        _resolve_tracked_process(
+            [{"pid": 10, "ppid": 1, "name": "a", "uniqueID": 11}, {"pid": 20, "ppid": 1, "name": "b", "uniqueID": 11}],
+            ("uniqueID", 11),
+            "pid=10, ppid=1, name=a",
+        )
+
+
+def _monitor_snapshots_patch(monkeypatch, snapshots):
+    async def fake_create(_dvt, interval=None):
+        return _FakeSysmontap(snapshots)
+
+    monkeypatch.setattr(process_module, "DvtProvider", _FakeDvtProvider)
+    monkeypatch.setattr(process_module.Sysmontap, "create", fake_create)
+
+
+async def _run_monitor_process_task(snapshots, monkeypatch, **kwargs):
+    _monitor_snapshots_patch(monkeypatch, snapshots)
+    out = StringIO()
+    await sysmon_process_monitor_process_task(
+        cast(LockdownServiceProvider, object()),
+        filter_expressions=["name=App"],
+        keys=["pid"],
+        out=out,
+        **kwargs,
+    )
+    return [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
+
+
+@pytest.mark.asyncio
+async def test_sysmon_process_monitor_process_task_stops_when_selected_process_exits(monkeypatch, capsys):
+    snapshots = [
+        [{"pid": 10, "ppid": 1, "name": "App", "uniqueID": 11}],
+        [{"pid": 99, "ppid": 1, "name": "other", "uniqueID": 99}],
+        [{"pid": 20, "ppid": 1, "name": "App", "uniqueID": 22}],
+    ]
+
+    emitted = await _run_monitor_process_task(snapshots, monkeypatch, choose=ProcessSelectionMode.FIRST)
+
+    assert [record["pid"] for record in emitted] == [10]
+    assert "Selected process exited: pid=10, ppid=1, name=App" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_sysmon_process_monitor_process_task_keep_monitoring_skips_unmatched_snapshots(monkeypatch):
+    snapshots = [
+        [{"pid": 10, "ppid": 1, "name": "App", "uniqueID": 11}],
+        [{"pid": 99, "ppid": 1, "name": "other", "uniqueID": 99}],
+        [{"pid": 10, "ppid": 1, "name": "App", "uniqueID": 11}],
+    ]
+
+    emitted = await _run_monitor_process_task(
+        snapshots, monkeypatch, choose=ProcessSelectionMode.FIRST, keep_monitoring=True
+    )
+
+    assert [record["pid"] for record in emitted] == [10, 10]
+
+
+@pytest.mark.asyncio
+async def test_sysmon_process_monitor_process_task_keep_monitoring_reacquires_relaunched_process(monkeypatch, capsys):
+    snapshots = [
+        [{"pid": 10, "ppid": 1, "name": "App", "uniqueID": 11}],
+        [{"pid": 99, "ppid": 1, "name": "other", "uniqueID": 99}],
+        [{"pid": 20, "ppid": 1, "name": "App", "uniqueID": 22}],
+    ]
+
+    emitted = await _run_monitor_process_task(
+        snapshots, monkeypatch, choose=ProcessSelectionMode.LAST, keep_monitoring=True
+    )
+
+    assert [record["pid"] for record in emitted] == [10, 20]
+    status_output = capsys.readouterr().out
+    assert "Monitoring pid=10, ppid=1, name=App" in status_output
+    assert "Monitoring pid=20, ppid=1, name=App" in status_output
+    assert "Selected process exited" not in status_output
+
+
+@pytest.mark.asyncio
+async def test_sysmon_process_monitor_process_task_keep_monitoring_rejects_prompt_selection(monkeypatch):
+    with pytest.raises(typer.BadParameter, match='Re-run with "--choose first" or "--choose last"'):
+        await _run_monitor_process_task([], monkeypatch, keep_monitoring=True)

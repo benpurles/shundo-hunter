@@ -1,0 +1,16 @@
+.DS_Store
+.idea/
+venv/
+build/
+dist/
+version.txt
+debug/
+*.pyc
+*.egg-info/
+pymobiledevice3/_version.py
+.python-version
+__main__.spec
+tests/services/xcuitest.json
+
+# MkDocs build output
+/site/

@@ -1,0 +1,184 @@
+site_name: pymobiledevice3
+site_description: Pure Python 3 implementation for working with iOS devices (iPhone, iPad, ...)
+site_url: https://doronz88.github.io/pymobiledevice3/
+repo_url: https://github.com/doronz88/pymobiledevice3
+repo_name: doronz88/pymobiledevice3
+edit_uri: edit/master/docs/
+copyright: Licensed under GPL-3.0-or-later
+
+theme:
+  name: material
+  custom_dir: overrides
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: sphinx
+            show_root_heading: true
+            show_source: true
+            show_signature_annotations: true
+            separate_signature: true
+            members_order: source
+            filters: ["!^_"]
+            heading_level: 2
+  # Emit /llms.txt and /llms-full.txt for LLM agents (llmstxt.org convention)
+  - llmstxt:
+      markdown_description: >-
+        Pure Python 3 implementation for working with iOS devices (iPhone, iPad, ...);
+        ships a CLI and a Python API.
+      full_output: llms-full.txt
+      sections:
+        Getting started:
+          - index.md
+          - installation.md
+        Guides:
+          - guides/cli-recipes.md
+          - guides/ios17-tunnels.md
+          - guides/environment-variables.md
+          - guides/webview-debugging.md
+          - guides/machine-readable-output.md
+          - guides/python-api.md
+          - guides/writing-commands-with-service-provider.md
+          - guides/troubleshooting.md
+          - guides/restore.md
+        API reference:
+          - api/index.md
+          - api/connection.md
+          - api/services.md
+          - api/system.md
+          - api/apps-files.md
+          - api/capture.md
+          - api/backup-symbols.md
+          - api/dvt.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+
+hooks:
+  - docs/_hooks/inject_external.py
+  - docs/_hooks/gen_cli_reference.py
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Guides:
+      - CLI recipes: guides/cli-recipes.md
+      - Mounting AFC in Finder (WebDAV): guides/webdav-mounting.md
+      - iOS 17+ tunnels: guides/ios17-tunnels.md
+      - Understanding the network stacks: guides/network-stacks.md
+      - Environment variables: guides/environment-variables.md
+      - WebView debugging: guides/webview-debugging.md
+      - Machine-readable output: guides/machine-readable-output.md
+      - Python API: guides/python-api.md
+      - Writing CLI commands: guides/writing-commands-with-service-provider.md
+      - Device operator skill: guides/codex-device-operator-skill.md
+      - Troubleshooting: guides/troubleshooting.md
+      - Restoring and updating devices: guides/restore.md
+  - CLI Reference:
+      - Overview: cli/index.md
+      - activation: cli/activation.md
+      - afc: cli/afc.md
+      - amfi: cli/amfi.md
+      - apps: cli/apps.md
+      - backup2: cli/backup2.md
+      - btlogger: cli/btlogger.md
+      - bonjour: cli/bonjour.md
+      - companion: cli/companion.md
+      - crash: cli/crash.md
+      - cryptex: cli/cryptex.md
+      - developer: cli/developer.md
+      - diagnostics: cli/diagnostics.md
+      - doctor: cli/doctor.md
+      - lockdown: cli/lockdown.md
+      - mounter: cli/mounter.md
+      - notification: cli/notification.md
+      - pcap: cli/pcap.md
+      - power-assertion: cli/power-assertion.md
+      - processes: cli/processes.md
+      - profile: cli/profile.md
+      - provision: cli/provision.md
+      - remote: cli/remote.md
+      - restore: cli/restore.md
+      - springboard: cli/springboard.md
+      - syslog: cli/syslog.md
+      - usbmux: cli/usbmux.md
+      - webinspector: cli/webinspector.md
+      - idam: cli/idam.md
+      - version: cli/version.md
+  - Python API Reference:
+      - Overview: api/index.md
+      - Connecting to a device: api/connection.md
+      - Lockdown services: api/services.md
+      - System & device: api/system.md
+      - Apps, files & profiles: api/apps-files.md
+      - Capture, logging & automation: api/capture.md
+      - Backup, symbols & location: api/backup-symbols.md
+      - Developer / DVT: api/dvt.md
+  - Protocol Internals:
+      - iDevice protocol layers: internals/idevice-protocol-layers.md
+      - RemoteXPC: internals/remotexpc.md
+      - DTX client: internals/dtx.md
+      - DTX internals: internals/dtx-development.md
+  - Project:
+      - Contributing: project/contributing.md
+      - Agent guidance: project/agents.md
+      - Code of conduct: project/code-of-conduct.md

@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Shundo Hunter</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Application navigation">
+      <header class="brand">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <div>
+          <strong>Shundo Hunter</strong>
+          <span class="version">Automated hunter</span>
+        </div>
+      </header>
+
+      <nav class="primary-nav" aria-label="Primary">
+        <button class="nav-item is-active" data-view="hunt" aria-current="page">
+          <span class="nav-icon target-icon" aria-hidden="true"></span>
+          Hunt
+        </button>
+        <button class="nav-item" data-view="statistics">
+          <span class="nav-icon stats-icon" aria-hidden="true"></span>
+          Statistics
+        </button>
+        <button class="nav-item" data-view="overnight"><span class="nav-icon" aria-hidden="true">☾</span>Overnight</button>
+        <button class="nav-item" data-view="settings">
+          <span class="nav-icon settings-icon" aria-hidden="true"></span>
+          Settings
+        </button>
+      </nav>
+
+      <section class="channel-section" aria-labelledby="channels-heading">
+        <div class="section-label-row">
+          <h2 id="channels-heading">Watched channels</h2>
+          <span id="channel-count" class="count">0</span>
+        </div>
+        <div id="channel-list" class="channel-list">
+          <p class="sidebar-empty">No channels observed</p>
+        </div>
+      </section>
+
+      <footer class="sidebar-footer">
+        <div class="health-row">
+          <span id="sidebar-health-dot" class="status-dot is-offline"></span>
+          <span id="sidebar-health-label">Relay offline</span>
+        </div>
+        <span id="source-footnote" class="privacy-note">Expired coordinates delete automatically</span>
+      </footer>
+    </aside>
+
+    <div class="workspace">
+      <header class="command-bar">
+        <div class="command-group" aria-label="Hunt controls">
+          <button id="prepare-button" class="button" disabled>
+            <span class="device-icon" aria-hidden="true"></span>
+            <span id="prepare-label">Prepare phone</span>
+          </button>
+          <button id="start-button" class="button button-primary" disabled>
+            <span class="play-icon" aria-hidden="true"></span>
+            <span id="start-label">Start hunt</span>
+            <kbd>Space</kbd>
+          </button>
+          <button id="pause-button" class="button" disabled>
+            <span class="pause-icon" aria-hidden="true"></span>
+            Pause
+            <kbd>P</kbd>
+          </button>
+          <button id="skip-button" class="button" disabled>
+            <span class="skip-icon" aria-hidden="true"></span>
+            Skip
+            <kbd>K</kbd>
+          </button>
+          <button id="prioritize-button" class="button" disabled>
+            <span class="star-icon" aria-hidden="true">☆</span>
+            Prioritize
+            <kbd>R</kbd>
+          </button>
+          <button id="send-phone-button" class="button" disabled>
+            <span class="device-icon" aria-hidden="true"></span>
+            Test on phone
+          </button>
+        </div>
+        <div class="connection-group" aria-label="Connection status">
+          <button id="filter-toggle" class="quiet-control" aria-expanded="false" aria-controls="filter-panel">
+            <span class="filter-icon" aria-hidden="true"></span>
+            Filter
+          </button>
+          <div class="connection-state" id="relay-state">
+            <span class="status-dot is-offline"></span>
+            <span>Feed offline</span>
+          </div>
+          <div class="connection-state" id="phone-state">
+            <span class="device-icon" aria-hidden="true"></span>
+            <span>Phone offline</span>
+          </div>
+        </div>
+      </header>
+
+      <div id="filter-panel" class="filter-panel" hidden>
+        <label for="species-filter">Filter the timeline</label>
+        <input id="species-filter" type="search" placeholder="Species or channel" autocomplete="off">
+        <label class="checkbox-label">
+          <input id="queued-only" type="checkbox">
+          Show actionable sightings only
+        </label>
+        <button id="clear-filters" class="text-button">Clear filters</button>
+      </div>
+
+      <main id="main-content">
+        <section id="hunt-view" class="view is-active" aria-labelledby="hunt-heading">
+          <section class="mode-picker" aria-label="Choose a hunt mode">
+            <div class="mode-intro"><p class="eyebrow">How are you hunting?</p><p id="mode-description">Choose a mode. Nothing starts until you press Start.</p></div>
+            <button id="mode-casual" class="mode-card" aria-pressed="true"><strong>Casual hunt</strong><span>I’m nearby · I open and catch the Shundo</span></button>
+            <button id="mode-overnight" class="mode-card" aria-pressed="false"><strong>☾ Overnight hunt</strong><span>Guided setup · attempt to open &amp; hold it for me</span></button>
+          </section>
+          <div class="mode-next"><div><strong id="mode-next-title">Checking setup…</strong><p id="mode-next-detail"></p></div><button id="mode-next-button" class="button">Continue setup</button></div>
+          <div class="hunt-layout">
+            <div class="hunt-primary">
+              <section class="timeline-panel" aria-labelledby="hunt-heading">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">Hunt timeline</p>
+                    <h1 id="hunt-heading">Waiting for sightings</h1>
+                    <p id="hunt-message" class="hunt-message">Connect the phone and prepare iPogo to begin.</p>
+                    <p id="health-summary" class="settings-copy" role="status">Health watchdog off</p>
+                  </div>
+                  <div class="panel-heading-actions">
+                    <button id="manual-spawn-toggle" class="button" type="button" aria-expanded="false" aria-controls="manual-spawn-form">
+                      <span aria-hidden="true">＋</span>
+                      Add coordinates
+                    </button>
+                    <div id="hunt-state-badge" class="state-badge is-idle">Idle</div>
+                  </div>
+                </div>
+                <form id="manual-spawn-form" class="manual-spawn-form" hidden>
+                  <div class="manual-form-copy">
+                    <strong>Add the next check</strong>
+                    <span>Paste a 100-IV coordinate from any source. Manual entries expire after 10 minutes.</span>
+                  </div>
+                  <label for="manual-species">
+                    <span>Pokémon</span>
+                    <input id="manual-species" type="text" list="manual-species-catalog" placeholder="Bulbasaur" maxlength="80" autocomplete="off" required>
+                    <datalist id="manual-species-catalog"></datalist>
+                  </label>
+                  <label for="manual-coordinates">
+                    <span>Coordinates</span>
+                    <input id="manual-coordinates" type="text" inputmode="decimal" placeholder="40.760800, -111.891000" autocomplete="off" required>
+                  </label>
+                  <div class="manual-form-actions">
+                    <button id="cancel-manual-spawn" class="text-button" type="button">Cancel</button>
+                    <button id="add-manual-spawn" class="button button-primary" type="submit">Add next</button>
+                  </div>
+                </form>
+                <div class="feed-source-control" aria-labelledby="feed-source-label">
+                  <label class="source-picker" for="hunt-feed-source">
+                    <span id="feed-source-label">Coordinate source</span>
+                    <select id="hunt-feed-source">
+                      <option value="ipogo-internal">iPogo internal 100-IV feed</option>
+                      <option value="pokexperience">PokeXperience background feed</option>
+                      <option value="discord">Discord / Chrome relay</option>
+                    </select>
+                  </label>
+                  <div class="source-summary" aria-live="polite">
+                    <strong id="active-feed-title">iPogo internal feed selected</strong>
+                    <span id="active-feed-detail">Start the live feed before hunting.</span>
+                  </div>
+                  <div class="source-actions">
+                    <button id="hunt-feed-action" class="button">Start live feed</button>
+                    <button class="text-button setup-link" data-view="settings">Setup guide</button>
+                  </div>
+                </div>
+                <div id="alert-assurance" class="alert-assurance is-offline" role="status" aria-live="polite">
+                  <span id="alert-assurance-dot" class="assurance-dot" aria-hidden="true"></span>
+                  <div class="assurance-copy">
+                    <strong id="alert-assurance-title">Notification detector is off</strong>
+                    <span id="alert-assurance-detail">Prepare the phone before starting an unattended hunt.</span>
+                  </div>
+                  <dl class="assurance-facts">
+                    <div><dt>Current check</dt><dd id="alert-current-proof">Not hunting</dd></div>
+                    <div><dt>Last decision proof</dt><dd id="alert-last-proof">None yet</dd></div>
+                    <div><dt>This run</dt><dd id="alert-run-proof">0 confirmed · 0 timeouts</dd></div>
+                  </dl>
+                </div>
+                <div class="queue-toolbar">
+                  <div>
+                    <strong>Upcoming order</strong>
+                    <span id="queue-order-detail">Automatic priority, then CP or level</span>
+                  </div>
+                  <button id="reset-queue-order" class="text-button" type="button" hidden>Use automatic order</button>
+                </div>
+                <div class="timeline-columns" aria-hidden="true">
+                  <span>Order</span><span>State</span><span>Pokémon</span><span>CP</span><span>Level</span><span>Coordinates</span><span>Disappears in</span>
+                </div>
+                <div id="timeline" class="timeline" aria-live="polite">
+                  <div class="empty-state">
+                    <div class="empty-target" aria-hidden="true"><span></span></div>
+                    <h2>No sightings yet</h2>
+                    <p>Start iPogo’s live 100-IV feed to load fresh, authenticated coordinates.</p>
+                    <button class="button setup-link" data-view="settings">Open feed setup</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="event-panel" aria-labelledby="events-heading">
+                <div class="panel-heading compact">
+                  <div>
+                    <p class="eyebrow">Activity</p>
+                    <h2 id="events-heading">Event log</h2>
+                  </div>
+                  <div class="event-filters" role="group" aria-label="Filter events">
+                    <button class="event-filter is-active" data-source="all">All</button>
+                    <button class="event-filter" data-source="iPogo Feed">iPogo Feed</button>
+                    <button class="event-filter" data-source="PokeXperience">PokeXperience</button>
+                    <button class="event-filter" data-source="Discord">Discord</button>
+                    <button class="event-filter" data-source="Manual">Manual</button>
+                    <button class="event-filter" data-source="Phone">Phone</button>
+                    <button class="event-filter" data-source="Hunt">Hunt</button>
+                    <button class="event-filter" data-source="System">System</button>
+                  </div>
+                </div>
+                <div id="event-log" class="event-log">
+                  <p class="event-empty">Events will appear when the relay begins receiving sightings.</p>
+                </div>
+              </section>
+            </div>
+
+            <aside class="stats-rail" aria-label="Lifetime statistics">
+              <section class="lifetime-section">
+                <p class="eyebrow">Lifetime</p>
+                <p id="checked-total" class="primary-stat">0 <span>Pokémon checked</span></p>
+                <p id="shundo-total" class="secondary-stat">0 Shundos</p>
+                <dl class="supporting-stats">
+                  <div><dt>Sightings received</dt><dd id="received-total">0</dd></div>
+                  <div><dt>Skipped</dt><dd id="skipped-total">0</dd></div>
+                </dl>
+              </section>
+              <section class="species-summary" aria-labelledby="species-summary-heading">
+                <div class="section-label-row">
+                  <h2 id="species-summary-heading">Species history</h2>
+                  <button class="text-button" data-view="statistics">View all</button>
+                </div>
+                <div id="species-mini-list" class="species-mini-list">
+                  <p class="rail-empty">Individual totals appear after Pokémon are checked.</p>
+                </div>
+              </section>
+              <section id="readiness-section" class="next-step" aria-labelledby="readiness-heading">
+                <span id="readiness-icon" class="next-step-icon" aria-hidden="true">1</span>
+                <div>
+                  <strong id="readiness-heading">Hunter setup</strong>
+                  <p id="readiness-message">Connect the iPhone, then prepare iPogo before starting.</p>
+                  <dl class="readiness-list">
+                    <div><dt>Phone</dt><dd id="readiness-phone">Not connected</dd></div>
+                    <div><dt>Coordinates</dt><dd id="readiness-source">iPogo internal</dd></div>
+                    <div><dt>Location feed</dt><dd id="readiness-location">Idle</dd></div>
+                    <div><dt>Notification detector</dt><dd id="readiness-alerts">Off</dd></div>
+                  </dl>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+        <section id="statistics-view" class="view" aria-labelledby="statistics-heading" hidden>
+          <div class="page-heading">
+            <p class="eyebrow">Durable history</p>
+            <h1 id="statistics-heading">Lifetime statistics</h1>
+            <p>Counts are stored locally and survive application restarts.</p>
+          </div>
+          <div class="stats-summary-line">
+            <p><strong id="stats-checked">0</strong> Pokémon checked</p>
+            <span aria-hidden="true"></span>
+            <p><strong id="stats-shundos">0</strong> Shundos found</p>
+            <span aria-hidden="true"></span>
+            <p><strong id="stats-received">0</strong> sightings received</p>
+          </div>
+          <section class="species-table-section" aria-labelledby="species-table-heading">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">By species</p>
+                <h2 id="species-table-heading">Pokémon checked</h2>
+              </div>
+              <label class="search-label">
+                <span class="sr-only">Search species statistics</span>
+                <input id="stats-search" type="search" placeholder="Search species" autocomplete="off">
+              </label>
+            </div>
+            <div class="species-table-header" aria-hidden="true">
+              <span>Pokémon</span><span>Checked</span><span>Shundos</span><span>Received</span><span>Last seen</span>
+            </div>
+            <div id="species-table" class="species-table">
+              <div class="table-empty">No Pokémon have been checked yet.</div>
+            </div>
+          </section>
+        </section>
+
+        <section id="settings-view" class="view" aria-labelledby="settings-heading" hidden>
+          <div class="page-heading">
+            <p class="eyebrow">Configuration</p>
+            <h1 id="settings-heading">Settings</h1>
+            <p>Choose one coordinate source, verify it has fresh targets, then prepare the phone.</p>
+          </div>
+          <div class="settings-layout">
+            <section class="settings-section source-settings" aria-labelledby="coordinate-source-heading">
+              <div class="settings-title-row">
+                <div>
+                  <h2 id="coordinate-source-heading">Coordinate source</h2>
+                  <p>The selected source is the only one the Hunter can use.</p>
+                </div>
+                <div id="source-mode-badge" class="state-badge">iPogo internal</div>
+              </div>
+              <label class="settings-select-row" for="settings-feed-source">
+                <span>
+                  <strong>Use coordinates from</strong>
+                  <small>Source changes are locked while a hunt is active.</small>
+                </span>
+                <select id="settings-feed-source">
+                  <option value="ipogo-internal">iPogo internal 100-IV feed</option>
+                  <option value="pokexperience">PokeXperience background feed</option>
+                  <option value="discord">Discord / Chrome relay</option>
+                </select>
+              </label>
+              <dl class="settings-list source-counts">
+                <div><dt>Fresh iPogo targets</dt><dd id="source-internal-count">0</dd></div>
+                <div><dt>Fresh PokeX targets</dt><dd id="source-pokexperience-count">0</dd></div>
+                <div><dt>Fresh Discord targets</dt><dd id="source-discord-count">0</dd></div>
+                <div><dt>Manual targets</dt><dd id="source-manual-count">0</dd></div>
+                <div><dt>Expired coordinates</dt><dd>Deleted automatically</dd></div>
+              </dl>
+            </section>
+
+            <section class="settings-section" aria-labelledby="pokexperience-feed-heading">
+              <div class="settings-title-row">
+                <div>
+                  <h2 id="pokexperience-feed-heading">PokeXperience background feed</h2>
+                  <p>Downloads the complete live 100-IV snapshot in the background, including every coordinate and exact disappearance time. It never drives the PokeXperience window, mouse, keyboard, or clipboard.</p>
+                </div>
+                <div id="pokexperience-feed-badge" class="state-badge is-offline">Not synced</div>
+              </div>
+              <ol class="setup-steps">
+                <li><span>1</span><div><strong>Select PokeXperience above</strong><p>Hunter isolates this queue from Discord and iPogo’s internal feed.</p></div></li>
+                <li><span>2</span><div><strong>Set your Pokémon ranking</strong><p>Ranked species are queued first. Remaining PokeXperience and iPogo targets use highest CP; Discord uses highest level.</p></div></li>
+                <li><span>3</span><div><strong>Choose Sync PokeXperience</strong><p>Hunter downloads every live target and coordinate in one background request.</p></div></li>
+                <li><span>4</span><div><strong>Leave Hunter running</strong><p>The complete feed refreshes every minute and expired targets are deleted automatically.</p></div></li>
+              </ol>
+              <dl class="settings-list">
+                <div><dt>Connection</dt><dd id="pokexperience-app-state">Connecting</dd></div>
+                <div><dt>Last sync</dt><dd id="pokexperience-last-sync">Not yet</dd></div>
+                <div><dt>Targets captured</dt><dd id="pokexperience-count">0</dd></div>
+                <div><dt>Catalog coverage</dt><dd id="pokexperience-catalog-coverage">Not verified</dd></div>
+                <div><dt>Coordinates ready</dt><dd id="pokexperience-ready-count">0</dd></div>
+                <div><dt>Coordinate feed</dt><dd id="pokexperience-resolver-state">All coordinates included</dd></div>
+                <div><dt>Status</dt><dd id="pokexperience-message">Ready to sync</dd></div>
+              </dl>
+              <div class="settings-actions">
+                <button id="sync-pokexperience" class="button button-primary">Sync PokeXperience</button>
+              </div>
+              <p class="settings-copy">The sync runs entirely in the background. PokeXperience can remain closed, and your normal Mac input stays available throughout the hunt.</p>
+            </section>
+
+            <section class="settings-section" aria-labelledby="internal-feed-heading">
+              <div class="settings-title-row">
+                <div>
+                  <h2 id="internal-feed-heading">iPogo 100-IV feed</h2>
+                  <p>Loads the same authenticated targets used inside iPogo, refreshes them safely while idle, and removes expired coordinates.</p>
+                </div>
+                <div id="internal-feed-badge" class="state-badge is-offline">Not synced</div>
+              </div>
+              <ol class="setup-steps">
+                <li><span>1</span><div><strong>Select iPogo internal above</strong><p>This prevents Discord coordinates from entering the active hunt.</p></div></li>
+                <li><span>2</span><div><strong>Choose Sync iPogo feed now</strong><p>Hunter Lab opens briefly and requests iPogo’s authenticated 100-IV list automatically.</p></div></li>
+                <li><span>3</span><div><strong>Do not tap anything</strong><p>The list is captured automatically after iPogo finishes loading.</p></div></li>
+                <li><span>4</span><div><strong>Wait for “Synced”</strong><p>Production iPogo returns automatically and the next safe refresh is scheduled.</p></div></li>
+                <li><span>5</span><div><strong>Prepare, then start</strong><p>Automatic feed refresh pauses while a hunt is active so it cannot interrupt location checks.</p></div></li>
+              </ol>
+              <dl class="settings-list">
+                <div><dt>Last sync</dt><dd id="internal-feed-last-sync">Not yet</dd></div>
+                <div><dt>Targets seen</dt><dd id="internal-feed-count">0</dd></div>
+                <div><dt>Status</dt><dd id="internal-feed-message">Ready to sync</dd></div>
+              </dl>
+              <div class="settings-actions">
+                <button id="sync-internal-feed" class="button button-primary">Sync iPogo feed now</button>
+              </div>
+              <p class="settings-copy">The feed remains connected while the Hunter Lab’s background session stays healthy. If the badge changes to Disconnected, restart the live feed before the remaining queue expires. Production iPogo and its spawn-compatible patch are not modified.</p>
+            </section>
+
+            <section class="settings-section" aria-labelledby="relay-setup-heading">
+              <div class="settings-title-row">
+                <div>
+                  <h2 id="relay-setup-heading">Chrome relay</h2>
+                  <p>Legacy optional source for rendered Discord sightings.</p>
+                </div>
+                <div id="settings-relay-badge" class="state-badge is-offline">Not connected</div>
+              </div>
+              <ol class="setup-steps">
+                <li><span>1</span><div><strong>Keep Shundo Hunter running</strong><p>The local feed listens only on this Mac at port 8765.</p></div></li>
+                <li><span>2</span><div><strong>Load the Chrome relay</strong><p>Open Chrome Extensions, enable Developer mode, then choose Load unpacked and select the relay folder.</p></div></li>
+                <li><span>3</span><div><strong>Open your 100-IV channels</strong><p>Keep <code>#gen1</code> open in a Discord tab. Open one tab for every additional channel you want monitored.</p></div></li>
+                <li><span>4</span><div><strong>Wait for the green connection state</strong><p>The toolbar badge shows ON when the relay reaches the local app. Qualifying coordinates then enter the queue automatically.</p></div></li>
+              </ol>
+              <div class="path-field">
+                <span>Relay folder</span>
+                <code id="relay-path">shundo_hunter/browser_relay</code>
+                <button id="copy-relay-path" class="button">Copy path</button>
+              </div>
+            </section>
+
+            <section class="settings-section" aria-labelledby="privacy-heading">
+              <div class="settings-title-row">
+                <div>
+                  <h2 id="privacy-heading">Local data and privacy</h2>
+                  <p>The relay sends sanitized sighting data to this Mac only.</p>
+                </div>
+              </div>
+              <dl class="settings-list">
+                <div><dt>Discord authorization token</dt><dd>Never read or stored</dd></div>
+                <div><dt>Discord cookies</dt><dd>Remain inside Chrome</dd></div>
+                <div><dt>Pokedex100 session</dt><dd>Used inside Chrome only</dd></div>
+                <div><dt>Sighting database</dt><dd>Stored locally on this Mac</dd></div>
+              </dl>
+            </section>
+
+            <section class="settings-section" aria-labelledby="hunt-timing-heading">
+              <div class="settings-title-row">
+                <div>
+                  <h2 id="hunt-timing-heading">Hunt timing and recovery</h2>
+                  <p>Control how long each map gets to load and when repeated misses trigger an iPogo refresh.</p>
+                </div>
+                <div id="timing-settings-badge" class="state-badge is-running">Saved</div>
+              </div>
+              <form id="hunt-timing-form" class="timing-settings-form">
+                <label class="timing-setting-row" for="hunt-dwell-seconds">
+                  <span>
+                    <strong>Map loading wait</strong>
+                    <small>How long the avatar walks around each coordinate while waiting for a Hundo alert.</small>
+                  </span>
+                  <span class="number-with-unit">
+                    <input id="hunt-dwell-seconds" type="number" min="5" max="600" step="5" inputmode="numeric" required>
+                    <span>seconds</span>
+                  </span>
+                </label>
+                <label class="timing-setting-row" for="hundo-cooldown-seconds">
+                  <span>
+                    <strong>Wait after a Hundo</strong>
+                    <small>Hold the current location after a Hundo alert before teleporting to the next check. Shundos still stop immediately.</small>
+                  </span>
+                  <span class="number-with-unit">
+                    <input id="hundo-cooldown-seconds" type="number" min="0" max="600" step="1" inputmode="numeric" required>
+                    <span>seconds</span>
+                  </span>
+                </label>
+                <label class="timing-setting-row" for="recovery-failure-threshold">
+                  <span>
+                    <strong>Refresh after failed map loads</strong>
+                    <small>Consecutive automatic no-alert timeouts before Hunter refreshes iPogo. Manual Skip clicks are excluded.</small>
+                  </span>
+                  <span class="number-with-unit">
+                    <input id="recovery-failure-threshold" type="number" min="1" max="20" step="1" inputmode="numeric" required>
+                    <span>failures</span>
+                  </span>
+                </label>
+                <div class="settings-actions timing-settings-actions">
+                  <button id="save-hunt-timing" type="submit" class="button button-primary" disabled>Save hunt timing</button>
+                  <p id="timing-settings-note">Defaults are 45 seconds for map loading, 30 seconds after a Hundo, and 2 failures. Stop an active hunt before changing them.</p>
+                </div>
+              </form>
+            </section>
+
+            <section class="settings-section" aria-labelledby="rules-heading">
+              <div class="settings-title-row">
+                <div>
+                  <h2 id="rules-heading">Pokémon selection rules</h2>
+                  <p>Rank species first. iPogo and PokeXperience fallback targets use highest CP; Discord uses highest level.</p>
+                </div>
+                <div id="rules-mode-badge" class="state-badge">All species</div>
+              </div>
+              <label class="rule-mode-control">
+                <input id="selected-only" type="checkbox">
+                <span>
+                  <strong>Hunt only ranked species</strong>
+                  <small>When off, ranked Pokémon still go first and every other species follows.</small>
+                </span>
+              </label>
+              <div class="priority-add-row">
+                <label for="priority-species">Add a Pokémon</label>
+                <div class="priority-picker-row">
+                  <div class="priority-picker">
+                    <input id="priority-species" type="search" placeholder="Search or type any Pokémon" autocomplete="off" aria-autocomplete="list" aria-controls="species-suggestions" aria-expanded="false">
+                    <div id="species-suggestions" class="species-suggestions" role="listbox" hidden></div>
+                  </div>
+                  <button id="add-priority-species" class="button">Add to ranking</button>
+                </div>
+                <p class="priority-help">No live spawn is required. If a name is not suggested, type the full name and choose Add to ranking.</p>
+              </div>
+              <ol id="priority-species-list" class="priority-species-list"></ol>
+              <p id="priority-empty" class="settings-copy">No species ranked yet. Add species to define the hunt order.</p>
+            </section>
+
+            <section class="settings-section" aria-labelledby="phone-heading">
+              <div class="settings-title-row">
+                <div>
+                  <h2 id="phone-heading">iPhone automation</h2>
+                  <p>USB or paired Wi-Fi connection and developer location simulation.</p>
+                </div>
+                <div id="phone-settings-badge" class="state-badge is-offline">Not connected</div>
+              </div>
+              <dl class="settings-list">
+                <div><dt>Device</dt><dd id="phone-device-name">Waiting for paired iPhone</dd></div>
+                <div><dt>iOS</dt><dd id="phone-version">Unknown</dd></div>
+                <div><dt>Simulated location</dt><dd id="phone-location">None set by this session</dd></div>
+                <div><dt>Location feed</dt><dd id="phone-delivery">Idle</dd></div>
+                <div><dt>Spawn runtime</dt><dd id="ipogo-runtime">Not verified</dd></div>
+                <div><dt>iPogo session</dt><dd id="ipogo-prepared">Not prepared</dd></div>
+                <div><dt>Automatic refresh</dt><dd id="ipogo-auto-refresh">Enabled</dd></div>
+                <div><dt>World recovery</dt><dd id="ipogo-refresh-state">Idle</dd></div>
+                <div><dt>Refreshes this run</dt><dd id="ipogo-refresh-count">0</dd></div>
+                <div><dt>Last refresh</dt><dd id="ipogo-last-refresh">Not yet</dd></div>
+                <div><dt>Device log fallback</dt><dd id="notification-watcher">Off</dd></div>
+                <div><dt>iPogo world observer</dt><dd id="world-scan-watcher">Off</dd></div>
+                <div><dt>Last world update</dt><dd id="world-scan-last">None seen</dd></div>
+                <div><dt>Mac alert detector</dt><dd id="mac-notification-bridge">Off</dd></div>
+                <div><dt>Last mirrored alert</dt><dd id="mac-notification-last">None seen</dd></div>
+              </dl>
+              <div class="settings-actions">
+                <button id="refresh-phone" class="button">Check connection</button>
+                <button id="enable-wifi" class="button">Enable Wi-Fi pairing</button>
+                <button id="prepare-phone-settings" class="button">Prepare iPogo</button>
+                <button id="unprepare-phone-settings" class="button">Stop hunt / end preparation</button>
+                <button id="enable-notification-access" class="button">Enable Mac alert access</button>
+                <button id="clear-phone-location" class="button" disabled>Use real location</button>
+              </div>
+              <p class="settings-copy">Cable-free setup: connect USB and trust this Mac once, then enable Wi-Fi pairing. Keep both devices on the same network and this Mac awake. Stop the hunt before unplugging, check for “Wi-Fi connected”, then prepare again. An existing USB location stream is not migrated live.</p>
+              <p class="settings-copy">Prepare verifies the installed spawn-compatible runtime before hunting. The world observer confirms when iPogo has populated nearby Pokémon. A populated world with no Hundo alert can advance immediately; no world signal still uses the configured loading limit and recovery rules.</p>
+            </section>
+            <section id="overnight-settings" class="settings-section" aria-labelledby="overnight-heading">
+              <div class="settings-title-row"><div>
+                <h2 id="overnight-heading">Your overnight setup</h2>
+                <p>You throw and catch. Hunter never uses a ball or berry in this mode.</p>
+              </div></div>
+              <details id="overnight-management"><summary>Session controls &amp; encounter protection</summary>
+              <p class="settings-copy">On a Shundo alert, Hunter stops movement and locks the hunt. AI opening can inspect the map, tap one matching Pokémon, and check two encounter images. If evidence is unclear, it stops and alerts you. It never retries a tap, exits an encounter, throws, or uses a berry.</p>
+              <p id="overnight-status" class="settings-copy" role="status"></p>
+              <dl class="settings-list">
+                <div><dt>Alert source</dt><dd id="overnight-source">Mac mirrored notifications</dd></div>
+                <div><dt>Mac wake protection</dt><dd id="overnight-power">Off</dd></div>
+                <div><dt>Last encounter check</dt><dd id="overnight-check">None</dd></div>
+              </dl>
+              <p class="settings-copy">Keep the Mac lid open and plugged into power; its display can sleep. Keep iPhone charging, unlocked, in iPogo, with Auto-Lock set to Never (restore it afterward). Lower brightness manually. Wi-Fi, game/server disconnects, OS updates, and app crashes can still lose an encounter; no overnight guarantee.</p>
+              <p><label class="settings-copy"><input id="overnight-release-confirm" type="checkbox"> I want to release encounter protection and the Mac wake lock. This will not catch, dismiss, resume, or change location.</label></p>
+              <div class="settings-actions">
+                <button id="overnight-setup" class="button">Set up direct alerts &amp; Mac wake</button>
+                <button id="overnight-protect" class="button">Protect open encounter</button>
+                <button id="overnight-release" class="button">Release protection / end setup</button>
+                <button id="overnight-source-mac" class="button">Use mirrored alerts again</button>
+              </div>
+              <p class="settings-copy">Setup → enable AI → Prepare iPogo → start hunting. No separate Hundo test is needed. The first real alert during the walking hunt verifies delivery automatically; a connected reader alone is not proof. Enable iPogo banners and visible previews; Focus must not hide them. Old or mirrored banners do not count. Release does not dismiss an encounter or change location.</p>
+              <button id="overnight-end-preparation" class="button">Stop hunt / end phone preparation</button>
+              <button id="overnight-real-location" class="button">Stop &amp; use real location</button>
+              </details>
+              <details id="overnight-ai-settings"><summary>AI opening settings <span id="guided-ai-badge"></span></summary>
+              <h3>AI map tap &amp; encounter evidence</h3>
+              <p class="settings-copy">Two separate checks: map selection identifies one safely selectable Pokémon—no shiny/IV proof is expected on the map. After opening, encounter verification requires visible shiny and 100-IV evidence. Read-only tests report whether map selection passed or was blocked; they never tap.</p>
+              <p id="vision-status" class="settings-copy" role="status">Disabled. No screenshots are sent.</p>
+              <p class="settings-copy">Uses the OpenAI API (separate billing from ChatGPT). Only a cropped game image and species/CP are sent, with response storage disabled. Cropping removes the top status/banner band but cannot guarantee every overlay is excluded. The API key stays in this Mac’s Keychain. AI may misidentify a sprite or shiny symbol; missing visible 100-IV evidence is never treated as confirmation.</p>
+              <div class="settings-grid">
+                <label class="settings-copy" for="vision-model">OpenAI vision model<input id="vision-model" type="text" value="gpt-6-astra" autocomplete="off" spellcheck="false"></label>
+                <label class="settings-copy" for="vision-key">API key <span id="vision-key-state">Not saved</span><input id="vision-key" type="password" placeholder="sk-… (leave empty to keep saved key)" autocomplete="new-password" spellcheck="false"></label>
+              </div>
+              <p><label class="settings-copy"><input id="vision-consent" type="checkbox"> I allow these cropped screenshots and Pokémon details to be sent to OpenAI and understand API usage is billed separately.</label></p>
+              <p><label class="settings-copy"><input id="vision-enabled" type="checkbox"> Enable one-tap Shundo opening and startup/egg screen recovery during overnight setup.</label></p>
+              <div class="settings-actions">
+                <button id="vision-save" class="button">Save AI settings</button>
+                <button id="vision-forget" class="button">Disable &amp; remove API key</button>
+                <button id="vision-cancel" class="button">Cancel AI inspection</button>
+              </div>
+              <details id="overnight-visual-tests"><summary>Optional supervised tests &amp; AI evidence</summary>
+              <p class="settings-copy">First, stop hunting and start overnight setup. Enter the species visible on your phone and run the read-only test. This sends one image; it cannot tap or certify an overnight run.</p>
+              <label class="settings-copy" for="vision-species">Test Pokémon<input id="vision-species" type="text" placeholder="e.g. Charizard" autocomplete="off"></label>
+              <div class="settings-actions"><button id="vision-analyze" class="button">Analyze screen · no tap</button></div>
+              <p><label class="settings-copy"><input id="vision-test-confirm" type="checkbox"> I am supervising an ordinary Pokémon test. Open at most one encounter, send up to two cropped images to OpenAI, and leave it open. No throws, berries, catches or Shundo-stat changes.</label></p>
+              <div class="settings-actions"><button id="vision-test-open" class="button">Test one opening · no catch</button></div>
+              <details open><summary>Latest AI evidence &amp; decision</summary><pre id="vision-evidence" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto">No AI inspection yet. This feature has not been live-validated on your phone.</pre></details>
+              </details>
+              </details>
+              <details id="overnight-diagnostics"><summary>Health checks &amp; recovery details</summary>
+              <h3>Overnight health watchdog</h3>
+              <p id="health-status" class="settings-copy" role="status">Off</p>
+              <p id="health-checks" class="settings-copy">No checks yet.</p>
+              <p class="settings-copy">Checks progress every 10 seconds during an overnight hunt. Known startup, weather “I AM SAFE”, and egg screens use guarded recovery. Read-only screen checks do not extend your coordinate timeout. Technical recovery is limited to 2 attempts until the hunt makes progress, and 6 per rolling hour while this app stays open, with backoff. Reconnection requires a healthy reader; the next live alert verifies delivery. Existing bad-coordinate refresh settings stay in effect.</p>
+              <p class="settings-copy">Manual pauses, unknown dialogs, locked phones, and protected encounters never auto-resume. A protected Shundo cannot trigger a repair, restart or teleport. Unresolved problems pause and alert you. This is not a guarantee against game/server or OS failures.</p>
+              <details><summary>Health checks &amp; recovery history</summary><pre id="health-history" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto"></pre></details>
+              <h3>Screen recovery · startup notices, weather &amp; eggs</h3>
+              <p class="settings-copy">Automatic when overnight setup and AI are enabled: after refreshes, on a locally detected egg prompt while waiting, and before Shundo selection. Sends up to 8 cropped game images per recovery (60 per rolling hour while this app stays open); allows at most 6 safe recovery taps in 3 minutes. No map Pokémon taps, throws, purchases, permissions or encounter exits. Unknown screens pause for you. Recovery images include bottom close controls, but exclude the status/notification band. Multiple-egg batches may require manual help when the limit is reached.</p>
+              <p id="screen-recovery-status" class="settings-copy" role="status">Not inspected yet.</p>
+              <button id="screen-recover" class="button">Clear blocking screens · no catch</button>
+              <p class="settings-copy">Manual recovery requires an idle, unprepared hunt. Cancel AI inspection stops recovery too. Two map inspections are required before it resumes.</p>
+              <details><summary>Screen recovery evidence</summary><pre id="screen-recovery-evidence" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto"></pre></details>
+              </details>
+            </section>
+            <section class="settings-section" aria-labelledby="catch-lab-heading">
+              <div class="settings-title-row"><div>
+                <h2 id="catch-lab-heading">Catch Lab · experimental</h2>
+                <p>One supervised throw only. Automatic Shundo catching is not enabled.</p>
+              </div></div>
+              <p id="catch-lab-status" class="settings-copy" role="status">Controller not connected.</p>
+              <p id="catch-lab-result" class="settings-copy" role="status">No calibration attempt yet.</p>
+              <details><summary>Screen evidence from last attempt</summary><pre id="catch-lab-evidence" style="white-space:pre-wrap">No screen evidence yet.</pre></details>
+              <p class="settings-copy">Start the signed phone-control helper and enable iPhone Settings → Developer → Enable UI Automation. Stop/unprepare Hunter, then open an ordinary Pokémon encounter. Capture a preview and click the ball, then the desired throw destination. Nothing is touched until you confirm below. Each preview expires after 30 seconds.</p>
+              <div class="settings-actions">
+                <button id="catch-lab-start" class="button">Start controller</button>
+                <button id="catch-lab-stop" class="button">Stop controller</button>
+                <button id="catch-lab-inspect" class="button">Capture iPogo preview</button>
+              </div>
+              <div id="catch-lab-preview" hidden>
+                <p id="catch-lab-scene" class="settings-copy"></p>
+                <img id="catch-lab-image" alt="iPogo test encounter. Click the ball, then the throw destination." style="max-width:280px;width:100%;cursor:crosshair;display:block;margin:16px 0;">
+                <p id="catch-lab-points" class="settings-copy">Click the ball, then the throw destination.</p>
+                <label class="settings-copy" for="catch-lab-duration">Throw duration: <output id="catch-lab-duration-label">350 ms</output> (lower = faster swipe)</label>
+                <input id="catch-lab-duration" type="range" min="120" max="600" step="10" value="350" style="display:block;width:280px;max-width:100%;margin:12px 0">
+                <p class="settings-copy">Calibration changes swipe speed only. Select fresh ball/destination points for each test. Results depend on distance and timing; no setting guarantees a catch.</p>
+                <label class="settings-copy"><input id="catch-lab-confirm" type="checkbox"> This is an ordinary test Pokémon, a regular Poké Ball is selected, and I am ready to catch (including any game cooldown).</label>
+                <div class="settings-actions"><button id="catch-lab-throw" class="button" disabled>Test one throw</button></div>
+              </div>
+              <p class="settings-copy">After a throw, local screen recognition observes for about 24 seconds. Catch confirmation requires two matching frames; unreadable/changed screens stay uncertain. English UI only for now. No iPhone Mirroring or cloud OCR needed. No automatic retries, ball/berry selection, transfers or hunt-stat changes. Use only trusted private Wi-Fi; stop the controller after testing.</p>
+            </section>
+          </div>
+        </section>
+        <section id="overnight-view" class="view" hidden aria-labelledby="night-title">
+          <div class="night-container">
+            <header class="night-heading"><p class="eyebrow">Leave the search to Hunter</p><h1 id="night-title" tabindex="-1">Get ready for tonight.</h1><p>Find a Shundo. Try to open its encounter. Leave the catch to you.</p><button id="night-back" class="text-button">← Back to hunt &amp; queue</button></header>
+            <div class="night-expectations"><span>✓ No automatic throws or berries</span><span>✓ Mac display can sleep</span><span>✓ Unknown screens pause safely</span></div>
+            <section class="night-guide" aria-labelledby="night-next-title">
+              <div class="night-step-list" id="night-steps" aria-label="Overnight setup checklist"></div>
+              <div class="night-next">
+                <p class="eyebrow" id="night-progress">Your next step</p>
+                <h2 id="night-next-title">Checking your setup…</h2><p id="night-next-detail" role="status"></p>
+                <div id="night-device-checklist">
+                  <ul><li>iPhone charging, unlocked, with iPogo open.</li><li>iPhone Settings → Display &amp; Brightness → Auto-Lock → Never.</li><li>Mac plugged in, lid open; same Wi-Fi if cable-free.</li><li>iPogo banners/previews on; Focus must not hide alerts.</li></ul>
+                  <label><input id="overnight-autolock" type="checkbox"> My devices are ready. I understand the encounter is not guaranteed to survive overnight.</label>
+                </div>
+                <button id="night-next-button" class="button button-primary" disabled>Checking setup…</button>
+                <p id="night-action-status" role="status" class="settings-copy"></p>
+              </div>
+            </section>
+            <p class="night-caution">No separate test: verification happens during your walking hunt. Until a real Hundo is captured, delivery is unverified. Wi-Fi, game/server errors or unreadable screens can interrupt the hunt. No iPhone Mirroring is needed.</p>
+            <p id="night-health" class="settings-copy" role="status"></p>
+            <div id="night-settings-content"></div>
+          </div>
+        </section>
+      </main>
+
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    </div>
+  </div>
+  <script src="/hunt-setup.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

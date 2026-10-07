@@ -1,0 +1,4 @@
+.text
+.org 0x130224
+adrp x1, 0x6ef000
+add x1, x1, #0x820

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "my_app",
+    "runner_bundle_id": "com.example.MyApp.xctrunner",
+    "target_bundle_id": "com.example.MyApp",
+    "runner_env": {},
+    "timeout": 60.0,
+    "filter_test": "MyAppUITests/testSomething",
+    "all_tests": [
+      "MyAppUITests/testSomething",
+      "MyAppUITests/testSomethingElse"
+    ]
+  }
+]

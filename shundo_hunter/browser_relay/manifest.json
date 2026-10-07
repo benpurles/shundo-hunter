@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Shundo Hunter Feed Relay",
+  "version": "0.4.3",
+  "description": "Relays Pokedex100 100-IV sightings to the local Shundo Hunter app while keeping session credentials inside Chrome.",
+  "permissions": ["storage", "webRequest", "tabs", "scripting"],
+  "host_permissions": [
+    "http://127.0.0.1:8765/*",
+    "https://discord.com/api/*",
+    "https://pokedex100.com/*",
+    "https://*.pokedex100.com/*",
+    "https://pokexperience.com/*",
+    "https://*.pokexperience.com/*",
+    "https://pokex.co/*",
+    "https://*.pokex.co/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://discord.com/channels/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://coord.pokedex100.com/*"],
+      "js": ["coordinate.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Shundo Hunter Feed Relay"
+  }
+}

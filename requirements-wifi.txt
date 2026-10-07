@@ -1,0 +1,24 @@
+# Supplemental packages from the installed Wi-Fi runtime.
+# Loaded ahead of the base pymobiledevice3 pipx environment.
+annotated-doc==0.0.5
+arrow==1.4.0
+construct==2.10.70
+construct-typing==0.8.1
+ioregistry==0.0.6
+markdown-it-py==4.2.0
+mdurl==0.1.2
+pmd-net-addr==0.0.3
+pmd-net-proto==0.0.3
+pmd-pytcp==0.3.7
+prompt_toolkit==3.0.53
+Pygments==2.21.0
+python-dateutil==2.9.0.post0
+questionary==2.1.1
+rich==15.0.0
+shellingham==1.5.4
+six==1.17.0
+typer==0.27.2
+typer-injector==0.3.0
+typing_extensions==4.16.0
+tzdata==2026.4
+wcwidth==0.9.1
